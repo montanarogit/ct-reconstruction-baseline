@@ -1,0 +1,14 @@
+
+data/
+outputs/
+.DS_Store
+
+data/
+outputs/
+.DS_Store
+
+# Cache e IDE
+__pycache__/
+.vscode/
+data/
+outputs/
