@@ -2,7 +2,7 @@ import io
 import zipfile
 from pathlib import Path
 import requests
-
+#semplice script che scarica i file di esempio
 SERIES_UID = "1.3.6.1.4.1.14519.5.2.1.6279.6001.179049373636438705059720603192"
 TCIA_API_URL = f"https://services.cancerimagingarchive.net/nbia-api/services/v1/getImage?SeriesInstanceUID={SERIES_UID}"
 

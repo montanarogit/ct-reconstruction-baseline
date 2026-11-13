@@ -1,3 +1,17 @@
+#prende in automatico tutte le scansioni CT dalla cartella data/
+#le passa al soimulatore fisico ASTRA e ricostruisce le immagini con FBP algoritmo
+#calcola l'errore matematico mse sfruttando la gpu del mio mac tramite pytorch 
+#pytorch è un framework di deep learning che permette di fare calcoli numerici su gpu e cpu in maniera semplice e veloce
+#infine salva un grafico a 3 pannelli (originale | sinogramma | ricostruzione fbp) per ogni scansione CT
+
+
+
+#FBP èp un algoritmo classico di ricostruzione ct che prende i dati raccolit
+#da ogni angolazione e li spalma lungo la direzione di acquisizione, poi applica un filtro per rimuovere 
+# gli artefatti e ricostruire l'immagine finale
+
+
+
 from pathlib import Path
 import glob
 import os
@@ -8,6 +22,7 @@ from src.dataset import load_ct_slice
 from src.astra_sim import simulate_and_reconstruct
 
 def get_torch_device() -> torch.device:
+    # 1. HARDWARE: Sceglie in automatico la GPU del Mac (mps) o NVIDIA (cuda) per velocizzare PyTorch
     if torch.backends.mps.is_available():
         return torch.device("mps")
     elif torch.cuda.is_available():
@@ -18,38 +33,37 @@ def main():
     device = get_torch_device()
     print(f"[INFO] PyTorch in esecuzione su device: {device}")
 
-    # Assicuriamoci che la cartella outputs esista
     Path("outputs").mkdir(exist_ok=True)
 
-    # Trova automaticamente tutti i file .dcm dentro la cartella data/
+    # 2. DATASET: Pesca automaticamente tutti i file medici (.dcm) dalla cartella data/
     tutti_i_pazienti = sorted(glob.glob("data/*.dcm"))
 
     if not tutti_i_pazienti:
         print("[ERRORE] Nessun file .dcm trovato nella cartella data/!")
         return
 
+    # 3. PARAMETRO CHIAVE: 360 = alta dose (ottima qualità) | 30/60 = bassa dose (sparse-view con artefatti)
     num_angles = 360
 
-    # Ciclo che elabora ogni paziente trovato
     for dicom_path in tutti_i_pazienti:
         nome_paziente = os.path.basename(dicom_path).replace(".dcm", "")
         print(f"\n--- Elaborazione {nome_paziente} ({dicom_path}) ---")
 
-        # 1. Carica la fetta DICOM
+        # Carica la fetta originale normalizzata tra 0 e 1 (il nostro riferimento perfetto)
         ground_truth = load_ct_slice(dicom_path, size=512)
 
-        # 2. Simula acquisizione e ricostruzione con ASTRA
+        # 4. SIMULAZIONE FISICA (ASTRA): Genera il sinogramma (raggi X) e ricostruisce con l'algoritmo classico FBP
         print(f"[INFO] Simulazione acquisizione CT (Parallel Beam, {num_angles} angoli)...")
         sinogram, recon_fbp = simulate_and_reconstruct(ground_truth, num_angles=num_angles, algorithm="FBP")
 
-        # 3. Calcola MSE su PyTorch (MPS)
+        # 5. VALUTAZIONE (PyTorch): Trasforma in tensori su GPU e calcola l'errore (MSE) rispetto all'originale
         recon_tensor = torch.from_numpy(recon_fbp).unsqueeze(0).unsqueeze(0).to(device)
         gt_tensor = torch.from_numpy(ground_truth).unsqueeze(0).unsqueeze(0).to(device)
 
         mse_loss = torch.nn.functional.mse_loss(recon_tensor, gt_tensor)
         print(f"[RISULTATO] MSE per {nome_paziente} ({num_angles} viste): {mse_loss.item():.6f}")
 
-        # 4. Crea e salva il grafico specifico per questo paziente
+        # Salva il confronto visivo a 3 pannelli (Originale | Sinogramma | Ricostruzione FBP)
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
         axes[0].imshow(ground_truth, cmap="gray")
@@ -68,7 +82,7 @@ def main():
         plt.tight_layout()
         output_file = f"outputs/risultato_{nome_paziente}.png"
         plt.savefig(output_file, dpi=300)
-        plt.close(fig)  # Chiude la figura per liberare la memoria RAM tra un paziente e l'altro
+        plt.close(fig)
         print(f"[INFO] Grafico salvato in {output_file}")
 
 if __name__ == "__main__":
